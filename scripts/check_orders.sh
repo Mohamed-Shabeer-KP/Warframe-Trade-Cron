@@ -5,7 +5,7 @@ ITEM_API_BASE="https://api.warframe.market/v2/itemId"
 DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/1494659720466792501/vb4V_t-ya_F7V5TQbHqDnrjQR_bXf_o_OgPQ6nk0OwZPm10lpbcNW9NBImqLkW7uVwrg"
 RUN_TIMESTAMP=$(TZ=Asia/Kolkata date +"%d/%m-%I:%M %p")
 
-PRICE_THRESHOLD=50
+PRICE_THRESHOLD=30
 ORDERS_PER_EMBED=5
 MAX_EMBEDS=10
 
@@ -33,7 +33,7 @@ filtered=$(echo "$response" | jq '
 ')
 
 filtered_count=$(echo "$filtered" | jq 'length')
-echo "✅ Found $filtered_count buy orders with price > $PRICE_THRESHOLD"
+echo "✅ Found $filtered_count buy orders with price condition met"
 
 if [ "$filtered_count" -eq 0 ]; then
   exit 0
