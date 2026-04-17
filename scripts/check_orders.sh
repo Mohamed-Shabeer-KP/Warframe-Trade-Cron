@@ -67,7 +67,7 @@ embed_count=0
 # ---- separator embed (ONLY ON FIRST MESSAGE)
 embeds=$(echo "$embeds" | jq '
   . + [{
-    "description": " 🔔 Warframe Buy Orders '"$RUN_TIMESTAMP"'",
+    "title": " 🔔 Warframe Buy Orders '"$RUN_TIMESTAMP"'",
     "color": 9807270
   }]
 ')
