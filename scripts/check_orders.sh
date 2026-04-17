@@ -4,6 +4,13 @@ API_URL="https://api.warframe.market/v2/orders/recent"
 ITEM_API_BASE="https://api.warframe.market/v1/items"
 PRICE_THRESHOLD=50
 
+ DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/1494659720466792501/vb4V_t-ya_F7V5TQbHqDnrjQR_bXf_o_OgPQ6nk0OwZPm10lpbcNW9NBImqLkW7uVwrg"
+
+if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+  echo "DISCORD_WEBHOOK_URL not set"
+  exit 1
+fi
+
 echo "Fetching recent orders..."
 response=$(curl -s "$API_URL")
 
