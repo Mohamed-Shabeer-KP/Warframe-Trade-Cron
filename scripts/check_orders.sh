@@ -60,7 +60,7 @@ embed_count=0
 
 embeds=$(echo "$embeds" | jq '
   . + [{
-    "title": "🔔 ('"$RUN_TIMESTAMP"')",
+    "title": "🔔 WARFRAME BUY ORDERS ('"$RUN_TIMESTAMP"')",
     "color": 9807270
   }]
 ')
@@ -81,7 +81,7 @@ while read -r order; do
   if [ "$count" -eq "$ORDERS_PER_EMBED" ]; then
     embeds=$(echo "$embeds" | jq \
       --arg desc "$current_embed" \
-      '. + [{ "title": "🚨 Warframe BUY Orders", "description": $desc, "color": 15158332 }]'
+      '. + [{"description": $desc, "color": 15158332 }]'
     )
     current_embed=""
     
@@ -95,7 +95,7 @@ done <<< "$(echo "$filtered" | jq -c '.[]')"
 if [ -n "$current_embed" ] && [ "$embed_count" -lt "$MAX_EMBEDS" ]; then
   embeds=$(echo "$embeds" | jq \
     --arg desc "$current_embed" \
-     '. + [{ "title": "🚨 Warframe BUY Orders", "description": $desc, "color": 15158332 }]'
+     '. + [{"description": $desc, "color": 15158332 }]'
   )
 fi
 
