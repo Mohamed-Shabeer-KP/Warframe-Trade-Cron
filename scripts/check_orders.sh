@@ -4,18 +4,10 @@ API_URL="https://api.warframe.market/v2/orders/recent"
 ITEM_API_BASE="https://api.warframe.market/v2/itemId"
 DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/1494659720466792501/vb4V_t-ya_F7V5TQbHqDnrjQR_bXf_o_OgPQ6nk0OwZPm10lpbcNW9NBImqLkW7uVwrg"
 RUN_TIMESTAMP=$(TZ=Asia/Kolkata date +"%d/%m-%I:%M %p")
-TIME_BUCKET=$(TZ=Asia/Kolkata date +%M | awk '{print int($1/15)}')
 
 PRICE_THRESHOLD=50
 ORDERS_PER_EMBED=5
 MAX_EMBEDS=10
-
-case "$TIME_BUCKET" in
-  0) EMBED_COLOR=3447003  ;; # Blue
-  1) EMBED_COLOR=3066993  ;; # Green
-  2) EMBED_COLOR=15844367 ;; # Yellow
-  3) EMBED_COLOR=15105570 ;; # Purple
-esac
 
 if [ -z "$DISCORD_WEBHOOK_URL" ]; then
   echo "❌ DISCORD_WEBHOOK_URL not set"
@@ -66,6 +58,13 @@ current_embed=""
 count=0
 embed_count=0
 
+embeds=$(echo "$embeds" | jq '
+  . + [{
+    "title": "🔔 ('"$RUN_TIMESTAMP"')",
+    "color": 9807270
+  }]
+')
+
 while read -r order; do
   slug=$(get_slug "$(echo "$order" | jq -r '.itemId')")
 
@@ -82,9 +81,10 @@ while read -r order; do
   if [ "$count" -eq "$ORDERS_PER_EMBED" ]; then
     embeds=$(echo "$embeds" | jq \
       --arg desc "$current_embed" \
-      '. + [{ "title": "🚨 Warframe BUY Orders('"$RUN_TIMESTAMP"')", "description": $desc, "color": '"$EMBED_COLOR"' }]'
+      '. + [{ "title": "🚨 Warframe BUY Orders", "description": $desc, "color": 15158332 }]'
     )
     current_embed=""
+    
     count=0
     ((embed_count++))
     [ "$embed_count" -ge "$MAX_EMBEDS" ] && break
@@ -95,7 +95,7 @@ done <<< "$(echo "$filtered" | jq -c '.[]')"
 if [ -n "$current_embed" ] && [ "$embed_count" -lt "$MAX_EMBEDS" ]; then
   embeds=$(echo "$embeds" | jq \
     --arg desc "$current_embed" \
-     '. + [{ "title": "🚨 Warframe BUY Orders('"$RUN_TIMESTAMP"')", "description": $desc, "color": '"$EMBED_COLOR"' }]'
+     '. + [{ "title": "🚨 Warframe BUY Orders", "description": $desc, "color": 15158332 }]'
   )
 fi
 
