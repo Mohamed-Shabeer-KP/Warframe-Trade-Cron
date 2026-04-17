@@ -7,7 +7,7 @@ RUN_TIMESTAMP=$(TZ=Asia/Kolkata date +"%d/%m-%I:%M %p")
 TIME_BUCKET=$(TZ=Asia/Kolkata date +%M | awk '{print int($1/15)}')
 
 PRICE_THRESHOLD=50
-ORDERS_PER_EMBED=10
+ORDERS_PER_EMBED=5
 MAX_EMBEDS=10
 
 case "$TIME_BUCKET" in
