@@ -9,6 +9,17 @@ PRICE_THRESHOLD=30
 ORDERS_PER_EMBED=5
 MAX_EMBEDS=10
 
+
+send_embeds() {
+  local embeds_json="$1"
+
+  payload=$(jq -n --argjson embeds "$embeds_json" '{ embeds: $embeds }')
+
+  curl -s -X POST "$DISCORD_WEBHOOK_URL" \
+    -H "Content-Type: application/json" \
+    -d "$payload"
+}
+
 if [ -z "$DISCORD_WEBHOOK_URL" ]; then
   echo "❌ DISCORD_WEBHOOK_URL not set"
   exit 1
@@ -60,7 +71,7 @@ embed_count=0
 
 embeds=$(echo "$embeds" | jq '
   . + [{
-    "title": "🔔 WARFRAME BUY ORDERS ('"$RUN_TIMESTAMP"')",
+    "title": "🔔 WARFRAME ORDERS ('"$RUN_TIMESTAMP"')",
     "color": 9807270
   }]
 ')
@@ -75,7 +86,13 @@ while read -r order; do
 **Quantity:** $(echo "$order" | jq -r '.quantity') 
 "
 
-  current_embed+="$block---"$'\n'
+if [ "$embed_count" -eq 10 ]; then
+  send_embeds "$embeds"
+  embeds="[]"
+  embed_count=0
+fi
+
+  current_embed+="$block-"$'\n'
   ((count++))
 
   if [ "$count" -eq "$ORDERS_PER_EMBED" ]; then
@@ -92,12 +109,19 @@ while read -r order; do
 done <<< "$(echo "$filtered" | jq -c '.[]')"
 
 # Add remaining orders
+
 if [ -n "$current_embed" ] && [ "$embed_count" -lt "$MAX_EMBEDS" ]; then
   embeds=$(echo "$embeds" | jq \
     --arg desc "$current_embed" \
      '. + [{"description": $desc, "color": 15158332 }]'
   )
 fi
+
+
+if [ "$(echo "$embeds" | jq 'length')" -gt 0 ]; then
+  send_embeds "$embeds"
+fi
+
 
 payload=$(jq -n --argjson embeds "$embeds" '{ embeds: $embeds }')
 
