@@ -1,7 +1,7 @@
 #!/bin/bash
 
 API_URL="https://api.warframe.market/v2/orders/recent"
-PRICE_THRESHOLD=50
+PRICE_THRESHOLD=10
 
 echo "Fetching recent orders..."
 response=$(curl -s "$API_URL")
