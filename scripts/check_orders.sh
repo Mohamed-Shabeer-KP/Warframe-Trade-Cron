@@ -1,76 +1,108 @@
 #!/bin/bash
 
 API_URL="https://api.warframe.market/v2/orders/recent"
-ITEM_API_BASE="https://api.warframe.market/v1/items"
-PRICE_THRESHOLD=1
+ITEM_API_BASE="https://api.warframe.market/v2/itemId"
+DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/1494659720466792501/vb4V_t-ya_F7V5TQbHqDnrjQR_bXf_o_OgPQ6nk0OwZPm10lpbcNW9NBImqLkW7uVwrg"
+RUN_TIMESTAMP=$(TZ=Asia/Kolkata date +"%d/%m-%I:%M %p")
+TIME_BUCKET=$(TZ=Asia/Kolkata date +%M | awk '{print int($1/15)}')
 
- DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/1494659720466792501/vb4V_t-ya_F7V5TQbHqDnrjQR_bXf_o_OgPQ6nk0OwZPm10lpbcNW9NBImqLkW7uVwrg"
+PRICE_THRESHOLD=50
+ORDERS_PER_EMBED=10
+MAX_EMBEDS=10
+
+case "$TIME_BUCKET" in
+  0) EMBED_COLOR=3447003  ;; # Blue
+  1) EMBED_COLOR=3066993  ;; # Green
+  2) EMBED_COLOR=15844367 ;; # Yellow
+  3) EMBED_COLOR=15105570 ;; # Purple
+esac
 
 if [ -z "$DISCORD_WEBHOOK_URL" ]; then
-  echo "DISCORD_WEBHOOK_URL not set"
+  echo "❌ DISCORD_WEBHOOK_URL not set"
   exit 1
 fi
 
-echo "Fetching recent orders..."
+echo "🔍 Fetching recent orders..."
 response=$(curl -s "$API_URL")
 
 if [ -z "$response" ]; then
-  echo "API fetch failed"
+  echo "❌ API fetch failed"
   exit 1
 fi
 
-# Filter qualifying buy orders
-orders=$(echo "$response" | jq '
-  .data[]
-  | select(.type=="buy" and .platinum > '"$PRICE_THRESHOLD"')
+total_orders=$(echo "$response" | jq '.data | length')
+echo "✅ Fetched $total_orders recent orders"
+
+filtered=$(echo "$response" | jq '
+  .data
+  | map(select(.type=="buy" and .platinum > '"$PRICE_THRESHOLD"'))
+  | sort_by(.platinum)
+  | reverse
 ')
 
-if [ -z "$orders" ]; then
-  echo "No qualifying buy orders found."
+filtered_count=$(echo "$filtered" | jq 'length')
+echo "✅ Found $filtered_count buy orders with price > $PRICE_THRESHOLD"
+
+if [ "$filtered_count" -eq 0 ]; then
   exit 0
 fi
 
-# Collect unique itemIds
-item_ids=$(echo "$orders" | jq -r '.itemId' | sort -u)
+echo "🔎 Resolving item slugs..."
 
-declare -A ITEM_SLUG_MAP
+declare -A SLUG_CACHE
 
-echo "Resolving item slugs..."
+get_slug() {
+  local id="$1"
+  if [ -z "${SLUG_CACHE[$id]}" ]; then
+    SLUG_CACHE[$id]=$(curl -s "$ITEM_API_BASE/$id" | jq -r '.data.slug // "unknown-item"')
+  fi
+  echo "${SLUG_CACHE[$id]}"
+}
 
-for item_id in $item_ids; do
-  item_response=$(curl -s "$ITEM_API_BASE/$item_id")
-  slug=$(echo "$item_response" | jq -r '.data.item.slug // "unknown-item"')
-  ITEM_SLUG_MAP["$item_id"]="$slug"
-done
+echo "📝 Building embeds..."
 
-echo "Formatting Discord message..."
-
-description=""
+embeds="[]"
+current_embed=""
+count=0
+embed_count=0
 
 while read -r order; do
-  item_id=$(echo "$order" | jq -r '.itemId')
-  slug="${ITEM_SLUG_MAP[$item_id]}"
+  slug=$(get_slug "$(echo "$order" | jq -r '.itemId')")
 
-  description+="**Item:** \`$slug\`\n"
-  description+="**Buyer:** $(echo "$order" | jq -r '.user.ingameName')\n"
-  description+="**Price:** $(echo "$order" | jq -r '.platinum') 💰\n"
-  description+="**Quantity:** $(echo "$order" | jq -r '.quantity')\n"
-  description+="**Order ID:** $(echo "$order" | jq -r '.id')\n"
-  description+="**Created:** $(echo "$order" | jq -r '.createdAt')\n"
-  description+="\n---\n\n"
-done <<< "$(echo "$orders" | jq -c '.')"
+  block="**Item:** [\`$slug\`](https://warframe.market/items/$slug)
+**Buyer:** $(echo "$order" | jq -r '.user.ingameName')
+**Price:** $(echo "$order" | jq -r '.platinum') 💰
+**Rank:** $(echo "$order" | jq -r '.rank') 
+**Quantity:** $(echo "$order" | jq -r '.quantity') 
+"
 
-payload=$(jq -n \
-  --arg title "🚨 Warframe BUY Orders > 50 Platinum" \
-  --arg desc "$description" \
-  '{
-    embeds: [{
-      title: $title,
-      description: $desc,
-      color: 15158332
-    }]
-  }')
+  current_embed+="$block---"$'\n'
+  ((count++))
+
+  if [ "$count" -eq "$ORDERS_PER_EMBED" ]; then
+    embeds=$(echo "$embeds" | jq \
+      --arg desc "$current_embed" \
+      '. + [{ "title": "🚨 Warframe BUY Orders('"$RUN_TIMESTAMP"')", "description": $desc, "color": '"$EMBED_COLOR"' }]'
+    )
+    current_embed=""
+    count=0
+    ((embed_count++))
+    [ "$embed_count" -ge "$MAX_EMBEDS" ] && break
+  fi
+done <<< "$(echo "$filtered" | jq -c '.[]')"
+
+# Add remaining orders
+if [ -n "$current_embed" ] && [ "$embed_count" -lt "$MAX_EMBEDS" ]; then
+  embeds=$(echo "$embeds" | jq \
+    --arg desc "$current_embed" \
+     '. + [{ "title": "🚨 Warframe BUY Orders('"$RUN_TIMESTAMP"')", "description": $desc, "color": '"$EMBED_COLOR"' }]'
+  )
+fi
+
+payload=$(jq -n --argjson embeds "$embeds" '{ embeds: $embeds }')
 
 curl -s -X POST "$DISCORD_WEBHOOK_URL" \
   -H "Content-Type: application/json" \
   -d "$payload"
+
+echo "✅ Discord notification sent with multiple embeds"
