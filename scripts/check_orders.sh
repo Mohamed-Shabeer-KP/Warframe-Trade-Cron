@@ -6,9 +6,13 @@ DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/1494659720466792501/vb4V_t
 RUN_TIMESTAMP=$(TZ=Asia/Kolkata date +"%d/%m-%I:%M %p")
 
 PRICE_THRESHOLD=30
-ORDERS_PER_EMBED=5
-MAX_EMBEDS=10
+ORDERS_PER_EMBED=3
+MAX_EMBEDS_PER_MESSAGE=10   # Discord hard limit
 
+if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+  echo "❌ DISCORD_WEBHOOK_URL not set"
+  exit 1
+fi
 
 send_embeds() {
   local embeds_json="$1"
@@ -19,11 +23,6 @@ send_embeds() {
     -H "Content-Type: application/json" \
     -d "$payload"
 }
-
-if [ -z "$DISCORD_WEBHOOK_URL" ]; then
-  echo "❌ DISCORD_WEBHOOK_URL not set"
-  exit 1
-fi
 
 echo "🔍 Fetching recent orders..."
 response=$(curl -s "$API_URL")
@@ -50,8 +49,6 @@ if [ "$filtered_count" -eq 0 ]; then
   exit 0
 fi
 
-echo "🔎 Resolving item slugs..."
-
 declare -A SLUG_CACHE
 
 get_slug() {
@@ -65,16 +62,27 @@ get_slug() {
 echo "📝 Building embeds..."
 
 embeds="[]"
-current_embed=""
-count=0
 embed_count=0
 
+# ---- separator embed (ONLY ON FIRST MESSAGE)
 embeds=$(echo "$embeds" | jq '
   . + [{
-    "title": "🔔 WARFRAME ORDERS ('"$RUN_TIMESTAMP"')",
+    "description": " 🔔 Warframe Buy Orders '"$RUN_TIMESTAMP"'",
     "color": 9807270
   }]
 ')
+embed_count=1
+
+current_embed=""
+order_count=0
+
+flush_if_needed() {
+  if [ "$embed_count" -ge "$MAX_EMBEDS_PER_MESSAGE" ]; then
+    send_embeds "$embeds"
+    embeds="[]"
+    embed_count=0
+  fi
+}
 
 while read -r order; do
   slug=$(get_slug "$(echo "$order" | jq -r '.itemId')")
@@ -82,51 +90,41 @@ while read -r order; do
   block="**Item:** [\`$slug\`](https://warframe.market/items/$slug)
 **Buyer:** $(echo "$order" | jq -r '.user.ingameName')
 **Price:** $(echo "$order" | jq -r '.platinum') 💰
-**Rank:** $(echo "$order" | jq -r '.rank') 
-**Quantity:** $(echo "$order" | jq -r '.quantity') 
+**Rank:** $(echo "$order" | jq -r '.rank')
+**Quantity:** $(echo "$order" | jq -r '.quantity')
 "
 
-if [ "$embed_count" -eq 10 ]; then
-  send_embeds "$embeds"
-  embeds="[]"
-  embed_count=0
-fi
+  current_embed+="$block---"$'\n'
+  ((order_count++))
 
-  current_embed+="$block-"$'\n'
-  ((count++))
+  if [ "$order_count" -eq "$ORDERS_PER_EMBED" ]; then
+    flush_if_needed
 
-  if [ "$count" -eq "$ORDERS_PER_EMBED" ]; then
     embeds=$(echo "$embeds" | jq \
       --arg desc "$current_embed" \
-      '. + [{"description": $desc, "color": 15158332 }]'
+      '. + [{ "description": $desc, "color": 15158332 }]'
     )
+
     current_embed=""
-    
-    count=0
+    order_count=0
     ((embed_count++))
-    [ "$embed_count" -ge "$MAX_EMBEDS" ] && break
   fi
 done <<< "$(echo "$filtered" | jq -c '.[]')"
 
-# Add remaining orders
+# Remaining orders
+if [ -n "$current_embed" ]; then
+  flush_if_needed
 
-if [ -n "$current_embed" ] && [ "$embed_count" -lt "$MAX_EMBEDS" ]; then
   embeds=$(echo "$embeds" | jq \
     --arg desc "$current_embed" \
-     '. + [{"description": $desc, "color": 15158332 }]'
+    '. + [{ "description": $desc, "color": 15158332 }]'
   )
+  ((embed_count++))
 fi
 
-
+# Final send
 if [ "$(echo "$embeds" | jq 'length')" -gt 0 ]; then
   send_embeds "$embeds"
 fi
 
-
-payload=$(jq -n --argjson embeds "$embeds" '{ embeds: $embeds }')
-
-curl -s -X POST "$DISCORD_WEBHOOK_URL" \
-  -H "Content-Type: application/json" \
-  -d "$payload"
-
-echo "✅ Discord notification sent with multiple embeds"
+echo "✅ Discord notifications sent (batched safely)"
