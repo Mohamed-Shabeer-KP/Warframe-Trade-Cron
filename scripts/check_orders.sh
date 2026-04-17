@@ -4,11 +4,6 @@ API_URL="https://api.warframe.market/v2/orders/recent"
 ITEM_API_BASE="https://api.warframe.market/v1/items"
 PRICE_THRESHOLD=50
 
-if [ -z "$DISCORD_WEBHOOK_URL" ]; then
-  echo "DISCORD_WEBHOOK_URL not set"
-  exit 1
-fi
-
 echo "Fetching recent orders..."
 response=$(curl -s "$API_URL")
 
